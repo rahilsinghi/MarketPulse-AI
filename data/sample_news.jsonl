@@ -1,4 +1,16 @@
-{"ticker": "ABC", "headline": "ABC Corp beats Q2 earnings estimates, stock rises 6%"}
-{"ticker": "XYZ", "headline": "XYZ Inc. under SEC investigation over accounting practices"}
-{"ticker": "ABC", "headline": "ABC Corp launches breakthrough product in AI hardware"}
-{"ticker": "MNO", "headline": "MNO Ltd. announces leadership change; CEO steps down"}
+{"id": "AAPL_1", "ticker": "AAPL", "headline": "Apple reports record quarterly earnings beating analyst expectations", "timestamp": "2025-06-17T21:17:07.670167"}
+{"id": "AAPL_2", "ticker": "AAPL", "headline": "Apple announces new iPhone with revolutionary AI capabilities", "timestamp": "2025-06-17T12:17:07.670183"}
+{"id": "AAPL_3", "ticker": "AAPL", "headline": "Apple stock rises 5% on strong services revenue growth", "timestamp": "2025-06-17T16:17:07.670188"}
+{"id": "AAPL_4", "ticker": "AAPL", "headline": "Apple CEO discusses company's AI strategy in earnings call", "timestamp": "2025-06-17T10:17:07.670191"}
+{"id": "GOOGL_5", "ticker": "GOOGL", "headline": "Google's AI breakthrough drives Alphabet stock surge", "timestamp": "2025-06-17T21:17:07.670194"}
+{"id": "GOOGL_6", "ticker": "GOOGL", "headline": "Google Cloud revenue jumps 35% year-over-year", "timestamp": "2025-06-17T22:17:07.670197"}
+{"id": "GOOGL_7", "ticker": "GOOGL", "headline": "Alphabet announces major AI research partnership", "timestamp": "2025-06-17T14:17:07.670200"}
+{"id": "GOOGL_8", "ticker": "GOOGL", "headline": "Google faces new regulatory challenges in Europe", "timestamp": "2025-06-17T21:17:07.670206"}
+{"id": "TSLA_9", "ticker": "TSLA", "headline": "Tesla delivers record number of vehicles in Q4", "timestamp": "2025-06-18T08:17:07.670211"}
+{"id": "TSLA_10", "ticker": "TSLA", "headline": "Tesla's Autopilot technology receives new safety updates", "timestamp": "2025-06-18T04:17:07.670214"}
+{"id": "TSLA_11", "ticker": "TSLA", "headline": "Tesla stock volatile amid production concerns", "timestamp": "2025-06-18T05:17:07.670217"}
+{"id": "TSLA_12", "ticker": "TSLA", "headline": "Elon Musk announces Tesla's expansion into new markets", "timestamp": "2025-06-17T23:17:07.670219"}
+{"id": "MSFT_13", "ticker": "MSFT", "headline": "Microsoft Azure revenue growth accelerates to 30%", "timestamp": "2025-06-17T16:17:07.670222"}
+{"id": "MSFT_14", "ticker": "MSFT", "headline": "Microsoft's AI copilot adoption exceeds expectations", "timestamp": "2025-06-17T22:17:07.670224"}
+{"id": "MSFT_15", "ticker": "MSFT", "headline": "Microsoft stock hits new all-time high", "timestamp": "2025-06-17T17:17:07.670226"}
+{"id": "MSFT_16", "ticker": "MSFT", "headline": "Microsoft announces dividend increase and share buyback", "timestamp": "2025-06-17T20:17:07.670228"}
