@@ -1,0 +1,13 @@
+streamlit
+openai
+numpy
+pandas
+python-dotenv
+requests
+beautifulsoup4
+lxml
+feedparser
+schedule
+aiohttp
+pytest
+pytest-asyncio

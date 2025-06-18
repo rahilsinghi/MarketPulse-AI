@@ -3,6 +3,85 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyc
+*.pyo
+*.pyd
+
+# Python Virtual Environments
+venv/
+venv_*/
+.venv/
+env/
+ENV/
+.env
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Streamlit
+.streamlit/
+.streamlit/secrets.toml
+
+# Large binary files
+*.dylib
+*.so
+*.dll
+*.exe
+*.dmg
+*.pkg
+*.deb
+*.rpm
+
+# Data files
+*.csv
+*.json
+*.pkl
+*.pickle
+*.parquet
+*.feather
+
+# Model files
+*.model
+*.bin
+*.h5
+*.hdf5
+*.pb
+
+# Documentation
+docs/_build/
+.sphinx/
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -21,54 +100,16 @@ wheels/
 *.egg
 PYTHONPATH
 
-# Virtual Environment
-.venv/
-venv/
-ENV/
-env/
-
-# Environment variables
-.env
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-
-# Test files (temporary)
-test_*.py
-
-# Logs
-*.log
-
 # Database
 *.db
 *.sqlite3
 
+# Test files (temporary)
+test_*.py
+
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 # pyenv
 .python-version
@@ -79,7 +120,6 @@ celerybeat.pid
 
 # SageMath parsed files
 *.sage.py
-
 # Environments
 .env
 .venv
@@ -103,3 +143,9 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Large JavaScript maps
+*.js.map
+
+# Git large files
+*.pack
