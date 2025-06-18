@@ -11,6 +11,27 @@ from dotenv import load_dotenv
 
 # Load environment
 load_dotenv()
+from marketpulse_ml import (
+    embed_text,
+    retrieve_by_query,
+    answer_query_sync,
+    get_embedding_cache_stats,
+    get_retrieval_stats,
+    configure_package,
+    DEFAULT_SIMILARITY_THRESHOLD
+)
+
+# Legacy imports for backward compatibility
+from retrieval_engine import build_prompt
+from ingest_pipeline import (
+    get_latest_rows, 
+    get_news_by_ticker, 
+    get_news_by_category,
+    get_recent_news,
+    get_pipeline_stats,
+    refresh_cache
+)
+
 
 # Import the real retrieval engine
 from retrieval_engine import answer_query_sync, retrieve_top_k, embed_text
@@ -37,7 +58,23 @@ def main():
         st.title("🔧 Configuration")
         
         # System status
-        st.subheader("⚡ System Status")
+        st.subheader("📦 Package Info")
+        try:
+            cache_stats = get_embedding_cache_stats()
+            retrieval_stats = get_retrieval_stats()
+            
+            st.metric("Cache Hit Rate", f"{cache_stats['hit_rate']:.1%}")
+            st.metric("Cache Size", f"{cache_stats['currsize']}/{cache_stats['maxsize']}")
+            st.metric("Similarity Threshold", f"{DEFAULT_SIMILARITY_THRESHOLD:.2f}")
+            
+            if st.button("🧹 Clear Cache"):
+                from marketpulse_ml import clear_embedding_cache
+                clear_embedding_cache()
+                st.success("Cache cleared!")
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Package stats error: {e}")
         
         # Check environment
         openai_key = os.getenv("OPENAI_API_KEY")
