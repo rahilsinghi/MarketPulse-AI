@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portfolio Tracker</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
+    header { background: #333; color: #fff; padding: 0.5em; text-align: center; font-size: 1.3em; }
+    .container { padding: 0.5em; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5em; }
+    .widget { background: white; padding: 0.3em; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.85em; position: relative; }
+    .editable { width: 100%; border: none; background: #eee; padding: 0.3em; border-radius: 3px; margin-bottom: 0.3em; font-size: 0.85em; }
+    iframe { width: 100%; height: 180px; border: none; border-radius: 5px; }
+    .add-form { padding: 0.5em; text-align: center; }
+    .add-form input { padding: 0.3em; font-size: 0.9em; border: 1px solid #ccc; border-radius: 3px; }
+    .add-form button { padding: 0.3em 0.6em; margin-left: 0.3em; font-size: 0.9em; border: none; border-radius: 3px; background: #1a73e8; color: white; cursor: pointer; }
+    .delete-btn { position: absolute; top: 5px; right: 5px; background: #e53935; color: white; border: none; border-radius: 3px; padding: 0.2em 0.4em; font-size: 0.8em; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header>💼 Portfolio Snapshot</header>
+  <div class="add-form">
+    <input id="newSymbol" placeholder="Enter symbol (e.g., NASDAQ:AAPL)" />
+    <button onclick="addWidget()">Add</button>
+  </div>
+  <div class="container" id="widgetContainer">
+    <div class="widget">
+      <button class="delete-btn" onclick="deleteWidget(this)">✕</button>
+      <input class="editable" value="NASDAQ:AAPL" oninput="updateWidget(this, 0)" />
+      <iframe id="widget0" src="https://s.tradingview.com/embed-widget/mini-symbol-overview/?symbol=NASDAQ%3AAAPL&locale=en" loading="lazy"></iframe>
+    </div>
+    <div class="widget">
+      <button class="delete-btn" onclick="deleteWidget(this)">✕</button>
+      <input class="editable" value="NASDAQ:TSLA" oninput="updateWidget(this, 1)" />
+      <iframe id="widget1" src="https://s.tradingview.com/embed-widget/mini-symbol-overview/?symbol=NASDAQ%3ATSLA&locale=en" loading="lazy"></iframe>
+    </div>
+    <div class="widget">
+      <button class="delete-btn" onclick="deleteWidget(this)">✕</button>
+      <input class="editable" value="COINBASE:BTCUSD" oninput="updateWidget(this, 2)" />
+      <iframe id="widget2" src="https://s.tradingview.com/embed-widget/mini-symbol-overview/?symbol=COINBASE%3ABTCUSD&locale=en" loading="lazy"></iframe>
+    </div>
+    <div class="widget">
+      <button class="delete-btn" onclick="deleteWidget(this)">✕</button>
+      <input class="editable" value="COINBASE:ETHUSD" oninput="updateWidget(this, 3)" />
+      <iframe id="widget3" src="https://s.tradingview.com/embed-widget/mini-symbol-overview/?symbol=COINBASE%3AETHUSD&locale=en" loading="lazy"></iframe>
+    </div>
+  </div>
+  <script>
+    let widgetCount = 4;
+
+    function updateWidget(input, index) {
+      const sym = input.value.trim();
+      const encoded = encodeURIComponent(sym);
+      const url = `https://s.tradingview.com/embed-widget/mini-symbol-overview/?symbol=${encoded}&locale=en`;
+      document.getElementById(`widget${index}`).src = url;
+    }
+
+    function addWidget() {
+      const symbol = document.getElementById("newSymbol").value.trim();
+      if (!symbol) return;
+      const container = document.getElementById("widgetContainer");
+      const encoded = encodeURIComponent(symbol);
+      const widget = document.createElement("div");
+      widget.className = "widget";
+      widget.innerHTML = `
+        <button class="delete-btn" onclick="deleteWidget(this)">✕</button>
+        <input class="editable" value="${symbol}" oninput="updateWidget(this, ${widgetCount})" />
+        <iframe id="widget${widgetCount}" src="https://s.tradingview.com/embed-widget/mini-symbol-overview/?symbol=${encoded}&locale=en" loading="lazy"></iframe>
+      `;
+      container.appendChild(widget);
+      document.getElementById("newSymbol").value = "";
+      widgetCount++;
+    }
+
+    function deleteWidget(button) {
+      const widget = button.parentElement;
+      widget.remove();
+    }
+  </script>
+</body>
+</html>
