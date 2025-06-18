@@ -12,6 +12,7 @@ import json
 import numpy as np
 import openai
 from dataclasses import dataclass
+from sui_logger import log_interaction 
 
 from utils import get_pathway_table, embed_text, validate_embedding, validate_news_record
 
@@ -303,8 +304,12 @@ async def answer_query_async(
 # ─── Synchronous wrapper ──────────────────────────────────────────────────────
 def answer_query_sync(question: str, top_k: int = 4, include_metadata: bool = False) -> str:
     """Synchronous wrapper for Streamlit compatibility."""
+  
+    # -- after answer is generated, before return --
     try:
-        return asyncio.run(answer_query_async(question, top_k, include_metadata))
-    except Exception as e:
-        logger.error(f"Error in answer_query_sync: {e}")
+        # naive ticker extraction: first [XYZ] bullet or None
+        first_bullet = next((d["ticker"] for d in top_docs if d.get("ticker")), None)
+        log_interaction(question, reply, first_bullet)
+    except Exception:
+        pass  # never block on logging
         return "⚠️ System error. Please try again."
