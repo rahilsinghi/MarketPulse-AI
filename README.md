@@ -75,4 +75,3 @@ For questions or support, contact the MarketPulse AI team at support@marketpulse
 
 - **Last Updated**: June 2025
 - **Version**: 1.0
-- **Next Review**: July 2025
