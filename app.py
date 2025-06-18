@@ -1,9 +1,13 @@
 """
 <<<<<<< HEAD
+<<<<<<< HEAD
 MarketPulse AI - Updated to use real OpenAI retrieval engine
 =======
 MarketPulse AI - Main Streamlit Application with Persistent Dark/Light Mode
 >>>>>>> 8f8c747 (UI update)
+=======
+MarketPulse AI - Main Streamlit Application with Persistent Dark/Light Mode
+>>>>>>> 122955e98d6b94dee209e6a2c97700fac9d392af
 """
 
 import streamlit as st
@@ -37,6 +41,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 def main():
     # Sidebar
@@ -387,6 +392,8 @@ AI Mode: {'Mock' if os.getenv('MOCK_EMBEDDING', 'false').lower() == 'true' else 
                 except Exception as e:
                     st.error(f"❌ AI test failed: {e}")
 =======
+=======
+>>>>>>> 122955e98d6b94dee209e6a2c97700fac9d392af
 # Dark/Light Mode Management with persistence
 def get_initial_theme():
     query_params = st.experimental_get_query_params()
@@ -718,7 +725,10 @@ def main():
 
     st.markdown("---")
     st.markdown("MarketPulse AI • Built with Streamlit • Demo Version")
+<<<<<<< HEAD
 >>>>>>> 8f8c747 (UI update)
+=======
+>>>>>>> 122955e98d6b94dee209e6a2c97700fac9d392af
 
 if __name__ == "__main__":
     main()
