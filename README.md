@@ -1,77 +1,137 @@
-# MarketPulse AI
+# 💹 MarketPulse AI  
+Real-time financial news Q&A powered by **Pathway** streaming RAG + GPT-4o
 
-MarketPulse AI is a cutting-edge system designed for real-time financial news analysis and prompt engineering. It leverages advanced AI techniques to provide concise, accurate, and context-aware responses for market-related queries.
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org) 
+[![Pathway](https://img.shields.io/badge/Streaming-Pathway-brightgreen)](https://github.com/pathwaycom/pathway) 
+[![OpenAI](https://img.shields.io/badge/LLM-GPT-4o-lightgrey)](https://platform.openai.com)  
 
-## 📋 Features
+> **Pitch (20 sec)**  
+> Markets move in seconds; static chatbots miss the story.  
+> **MarketPulse AI** streams headlines into a live vector index via **Pathway**, so you can ask  
+> “Why is TSLA spiking right now?” and get an answer citing the bulletin that landed moments ago.
 
-- **Prompt Design Strategy**:
-  - Specificity, constraints, and format standards for financial analysis.
-  - Context enhancement with relevance scoring and temporal awareness.
+---
 
-- **Smart Mock Features**:
-  - Content-aware responses using actual retrieved headlines and tickers.
-  - Maintains context relevance even in fallback scenarios.
-  - Provides source attribution and similarity-based confidence indicators.
+## ✨ Features
 
-- **Error Handling & Recovery**:
-  - Rate limit management, connection recovery, and input validation.
+| Category | Details |
+|----------|---------|
+| **Real-time ingest** | Pathway pipeline tails a JSONL feed *(offline demo)* or a Finnhub WebSocket *(online)*. |
+| **Adaptive RAG** | New headlines are embedded (OpenAI `text-embedding-3-small`) and instantly queryable. |
+| **Chat UI** | Streamlit chat with latency badge & “NEW” highlight for < 5 min headlines. |
+| **Semantic search** | Cosine similarity ≥ 0.30 filters noise; FAISS ready for > 1 k docs. |
+| **Smart mock mode** | Runs fully offline – deterministic embeddings, sample feed. |
+| **Tests** | `pytest` suite covers embeddings, retrieval, end-to-end Q&A. |
 
-- **Performance Optimization**:
-  - Response time targets for cached and new queries.
-  - Memory management with scalability considerations and FAISS integration.
+---
 
-- **Testing & Validation**:
-  - Prompt testing framework and similarity threshold validation.
+## 🚀 Quick Start (local)
 
-- **Production Deployment**:
-  - Environment configuration, monitoring, and alerting with key metrics.
-
-- **Configuration Management**:
-  - Adaptive threshold configuration and A/B testing framework.
-
-- **Future Enhancements**:
-  - Dynamic threshold adjustment using ML.
-  - Context-aware prompting and multi-modal support.
-  - Real-time learning with user feedback integration.
-
-## 📄 Documentation
-
-For detailed information on the system architecture, prompt design, and operational strategies, refer to the [Prompt Design & System Architecture Documentation](./docs/prompt_design.md).
-
-## 🚀 Getting Started
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-repo/MarketPulse-AI.git
-   ```
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run the application:
-   ```bash
-   python app.py
-   ```
-
-## 🧪 Testing
-
-Run the test suite to validate the system:
 ```bash
-pytest tests/
+git clone https://github.com/<your-org>/MarketPulse-AI.git
+cd MarketPulse-AI
+python3 -m venv venv && source venv/bin/activate   # Win: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env            # edit keys as needed
+streamlit run app.py            # open http://localhost:8501
 ```
 
-## 📈 Key Metrics
+### `.env` keys
 
-- **Cache Hit Rate**: >60%
-- **API Error Rate**: <5%
-- **Response Time**: P95 <5s for new queries
-- **Similarity Score Distribution**: Most results >0.4
+| Var | Example | Notes |
+|-----|---------|-------|
+| `OPENAI_API_KEY` | `sk-…` | required for real embeddings & answers |
+| `USE_LIVE_FEED` | `false` | `true` → Finnhub WS, `false` → demo JSONL |
+| `FINNHUB_TOKEN` | `YOUR_TOKEN` | only needed if live feed |
+| `SYMBOLS` | `AAPL,TSLA,MSFT` | comma list for WS subscribe |
+| `LOG_LEVEL` | `INFO` | `DEBUG` prints Pathway deltas |
 
-## 📧 Support
+---
 
-For questions or support, contact the MarketPulse AI team at support@marketpulse.ai.
+## 🖥️ How to Demo
 
-## 📅 Updates
+1. Launch app (JSONL mode).  
+2. **Sidebar** shows a new headline every ~3 s.  
+3. Ask **“Why is ACME up?”** → bot replies “No recent news.”  
+4. Click **“Inject Test Headline”** (or run `manual_append()` in a shell).  
+5. Re-ask question → answer cites the fresh bullet with a **NEW** badge.  
+6. Latency badge should read < 5 s for a cold query, < 1 s when cached.
 
-- **Last Updated**: June 2025
-- **Version**: 1.0
+---
+
+## 🏗️ Architecture
+
+```text
+┌──────── Demo JSONL ───────┐
+│ or Finnhub WebSocket      │
+└─────────────┬─────────────┘
+              │ ① ingest ② embed
+       pathway_pipeline.py
+              │ (live table + vector index)
+              ▼
+     marketpulse_ml.retrieval
+              │ ③ top-k docs
+              ▼
+    GPT-4o mini completion
+              │
+      ┌──── Streamlit UI ────┐
+      │ chat + sidebar feed  │
+      └──────────────────────┘
+```
+
+*Technical notes*  
+* Embedding UDF runs inside Pathway; cached via LRU to spare tokens.  
+* Retrieval falls back to linear cosine; flips to FAISS automatically > 1 k docs.  
+* Prompt design & threshold rationale in [`docs/prompt_design.md`](docs/prompt_design.md).
+
+---
+
+## 🧪 Tests
+
+```bash
+pytest -q            # all green
+```
+
+| File | Scope |
+|------|-------|
+| `tests/test_query_agent.py` | prompt + answer path |
+| `tests/test_retrieval_engine.py` | embeddings, similarity, FAISS fallback |
+| `tests/test_complete_pipeline.py` | Pathway ingest ➜ chat answer |
+
+---
+
+## ⚙️ Configuration Flags
+
+| Flag | Location | Effect |
+|------|----------|--------|
+| `SIMILARITY_THRESHOLD` | `.env` (default `0.30`) | tighten/loosen retrieval filter |
+| `MAX_QPS` | `.env` | simple rate-limit guard for OpenAI calls |
+| `MOCK_EMBEDDING` | `.env` (`true/false`) | force deterministic numpy vector (no API) |
+
+---
+
+## 📈 Performance Benchmarks
+
+| Path | P95 latency | Note |
+|------|-------------|------|
+| Cached query | **0.1 – 0.3 s** | embedding hits LRU |
+| Cold query (JSONL) | **1.5 – 3 s** | embedding + GPT |
+| Cold query (WS) | **2 – 5 s** | network variance |
+| Retrieval 1 k docs (FAISS) | **< 20 ms** | cosine search |
+
+---
+
+## ➕ Planned Enhancements
+
+* Live price-tick feed with delta explanations.  
+* Prometheus metrics panel (ingest → index lag).  
+* SSE / WebSocket streaming answers.  
+* Auto-tune similarity threshold with feedback loop.
+
+---
+
+## 📝 License
+
+MIT — see `LICENSE`.
+
+*Made with ❤️ by the MarketPulse AI team for HackWithNewYork 2025.*
