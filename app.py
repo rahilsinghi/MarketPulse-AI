@@ -1,55 +1,36 @@
-# app.py (Gemini version)
+"""
+Streamlit front-end.  Launch with:
+    streamlit run app.py
+"""
 
 import streamlit as st
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
 
-# Load Gemini key
-load_dotenv()
+import ingest_pipeline
+from query_agent import answer_query_sync
 
-print("Loaded GEMINI_API_KEY:", os.getenv("GEMINI_API_KEY"))
+# ─── kick off ingestion once ───────────────────────────────────────────────────
+if "ingest_started" not in st.session_state:
+    ingest_pipeline.start_ingest()
+    st.session_state.ingest_started = True
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-st.set_page_config(page_title="Live Finance Chatbot", layout="centered")
-st.title("💬 Real-Time Finance Q&A Bot (Gemini)")
+# ─── UI ────────────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="MarketPulse AI", layout="centered")
+st.title("💹 MarketPulse AI")
+st.caption("Real-time market Q&A powered by Pathway streaming RAG")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Show previous messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# replay chat history
+for m in st.session_state.messages:
+    st.chat_message(m["role"]).markdown(m["content"])
 
-# Generate response from Gemini
-def ask_gemini(question, mock_data):
-    model = genai.GenerativeModel("models/gemini-pro")
-    prompt = f"""You are a financial assistant. Use this real-time data to answer:
+# new input
+if prompt := st.chat_input("Ask about a stock, company, or market move…"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").markdown(prompt)
 
-    {mock_data}
-
-    Question: {question}
-    Answer:"""
-    response = model.generate_content(prompt)
-    return response.text
-
-# Handle user input
-user_input = st.chat_input("Ask me something about a company or stock...")
-
-if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
-
-    with st.chat_message("assistant"):
-        mock_data = """
-        📉 Tesla stock is down 2.4% today.
-        📰 News: Tesla factory operations delayed due to new labor regulations.
-        💬 Analyst sentiment: Mixed. Caution over international expansion.
-        """
-        with st.spinner("Thinking..."):
-            reply = ask_gemini(user_input, mock_data)
-        st.markdown(reply)
-        st.session_state.messages.append({"role": "assistant", "content": reply})
+    with st.spinner("Crunching fresh data…"):
+        response = answer_query_sync(prompt)
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.chat_message("assistant").markdown(response)
