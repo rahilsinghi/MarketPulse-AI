@@ -1,5 +1,9 @@
 """
+<<<<<<< HEAD
 MarketPulse AI - Updated to use real OpenAI retrieval engine
+=======
+MarketPulse AI - Main Streamlit Application with Persistent Dark/Light Mode
+>>>>>>> 8f8c747 (UI update)
 """
 
 import streamlit as st
@@ -8,6 +12,7 @@ import numpy as np
 import os
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from streamlit_autorefresh import st_autorefresh
 
 # Load environment
 load_dotenv()
@@ -26,11 +31,12 @@ from ingest_pipeline import (
 # Configuration
 st.set_page_config(
     page_title="MarketPulse AI",
-    page_icon="💹",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+<<<<<<< HEAD
 def main():
     # Sidebar
     with st.sidebar:
@@ -379,6 +385,368 @@ AI Mode: {'Mock' if os.getenv('MOCK_EMBEDDING', 'false').lower() == 'true' else 
                     st.write(test_result)
                 except Exception as e:
                     st.error(f"❌ AI test failed: {e}")
+=======
+# Dark/Light Mode Management with persistence
+def get_initial_theme():
+    query_params = st.experimental_get_query_params()
+    return query_params.get("theme", ["light"])[0]
+
+if "theme" not in st.session_state:
+    st.session_state.theme = get_initial_theme()
+
+def set_theme(new_theme):
+    if new_theme != st.session_state.theme:
+        st.session_state.theme = new_theme
+        st.experimental_set_query_params(theme=new_theme)
+        st.experimental_rerun()
+
+# Updated color palettes for a more professional look
+COLOR_PALETTES = {
+    "light": {
+        "primary": "#0B3D91",           # Dark blue
+        "background": "#FFFFFF",        # White
+        "text": "#222222",              # Dark gray
+        "secondary_text": "#555555",    # Medium gray
+        "sidebar_bg": "#F7F9FC",        # Very light gray-blue
+        "border_color": "#DDDDDD",      # Light gray
+        "card_bg": "#FAFAFA"            # Slightly off-white
+    },
+    "dark": {
+        "primary": "#5699D2",           # Soft blue
+        "background": "#121212",        # Very dark gray
+        "text": "#E0E0E0",              # Light gray
+        "secondary_text": "#AAAAAA",    # Medium-light gray
+        "sidebar_bg": "#1F1F1F",        # Dark gray
+        "border_color": "#333333",      # Dark gray
+        "card_bg": "#1E1E1E"            # Dark gray
+    }
+}
+
+colors = COLOR_PALETTES[st.session_state.theme]
+
+# Inject CSS for colors and typography
+def inject_css():
+    st.markdown(
+        f"""
+        <style>
+            /* Global background and text colors */
+            .css-1d391kg {{
+                background-color: {colors['background']} !important;
+                color: {colors['text']} !important;
+            }}
+            /* Sidebar background */
+            .css-1d391kg .css-18e3th9 {{
+                background-color: {colors['sidebar_bg']} !important;
+            }}
+            /* Card/container backgrounds */
+            .css-1d391kg .css-12oz5g7, .stButton>button {{
+                background-color: {colors['card_bg']} !important;
+                border: 1px solid {colors['border_color']} !important;
+                color: {colors['text']} !important;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }}
+            /* Headings typography */
+            h1, h2, h3, h4, h5, h6 {{
+                font-family: 'Montserrat', sans-serif;
+                font-weight: 700;
+                color: {colors['primary']};
+            }}
+            /* Paragraph text */
+            p, span, div {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                color: {colors['text']};
+            }}
+            /* Sidebar titles */
+            .css-1d391kg .css-1v0mbdj h1, .css-1d391kg .css-1v0mbdj h2 {{
+                color: {colors['primary']};
+            }}
+            /* Links */
+            a {{
+                color: {colors['primary']};
+            }}
+            /* Chat messages style */
+            .stChatMessage div[role="button"] {{
+                color: {colors['text']} !important;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }}
+            /* Streamlit divider color */
+            .stDivider {{
+                border-color: {colors['border_color']} !important;
+            }}
+            /* Streamlit metric label */
+            .stMetric label {{
+                color: {colors['secondary_text']} !important;
+            }}
+            /* Scrollbar for sidebar */
+            ::-webkit-scrollbar {{
+                width: 8px;
+                height: 8px;
+            }}
+            ::-webkit-scrollbar-thumb {{
+                background: {colors['border_color']};
+                border-radius: 10px;
+            }}
+            ::-webkit-scrollbar-thumb:hover {{
+                background: {colors['primary']};
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+inject_css()
+
+# Mock embedding function (deterministic)
+@st.cache_data
+def mock_embed_text(text: str):
+    np.random.seed(hash(text) % 2**32)
+    return np.random.rand(1536).tolist()
+
+# Mock news data
+def get_mock_news_data():
+    base_time = datetime.now()
+    news_data = [
+        {
+            "id": "AAPL_001",
+            "ticker": "AAPL",
+            "headline": "Apple reports record Q4 earnings, beating analyst expectations by 15%",
+            "timestamp": (base_time - timedelta(hours=2)).isoformat(),
+            "source": "Reuters",
+            "embedding": mock_embed_text("Apple reports record Q4 earnings, beating analyst expectations by 15%")
+        },
+        {
+            "id": "TSLA_001", 
+            "ticker": "TSLA",
+            "headline": "Tesla delivers 500,000 vehicles in Q4, stock surges 8% in after-hours trading",
+            "timestamp": (base_time - timedelta(hours=1)).isoformat(),
+            "source": "Bloomberg",
+            "embedding": mock_embed_text("Tesla delivers 500,000 vehicles in Q4, stock surges 8% in after-hours trading")
+        },
+        {
+            "id": "GOOGL_001",
+            "ticker": "GOOGL", 
+            "headline": "Google announces breakthrough in quantum computing, Alphabet shares jump 12%",
+            "timestamp": (base_time - timedelta(minutes=45)).isoformat(),
+            "source": "TechCrunch",
+            "embedding": mock_embed_text("Google announces breakthrough in quantum computing, Alphabet shares jump 12%")
+        },
+        {
+            "id": "MSFT_001",
+            "ticker": "MSFT",
+            "headline": "Microsoft Azure revenue grows 35% YoY, cloud dominance continues",
+            "timestamp": (base_time - timedelta(hours=3)).isoformat(),
+            "source": "CNBC",
+            "embedding": mock_embed_text("Microsoft Azure revenue grows 35% YoY, cloud dominance continues")
+        },
+        {
+            "id": "NVDA_001",
+            "ticker": "NVDA",
+            "headline": "NVIDIA partners with major automakers for next-gen AI chips",
+            "timestamp": (base_time - timedelta(minutes=20)).isoformat(),
+            "source": "MarketWatch", 
+            "embedding": mock_embed_text("NVIDIA partners with major automakers for next-gen AI chips")
+        },
+        {
+            "id": "META_001",
+            "ticker": "META",
+            "headline": "Meta's VR division shows promising growth, metaverse investments paying off",
+            "timestamp": (base_time - timedelta(hours=4)).isoformat(),
+            "source": "The Verge",
+            "embedding": mock_embed_text("Meta's VR division shows promising growth, metaverse investments paying off")
+        }
+    ]
+    return news_data
+
+# Initialize news_data in session state once
+if "news_data" not in st.session_state:
+    st.session_state.news_data = get_mock_news_data()
+
+def cosine_similarity(a, b):
+    a, b = np.array(a), np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+def retrieve_relevant_docs(question: str, data: list, top_k: int = 3):
+    question_embedding = mock_embed_text(question)
+    scored_docs = []
+    for doc in data:
+        similarity = cosine_similarity(question_embedding, doc['embedding'])
+        scored_docs.append({**doc, 'similarity': similarity})
+    scored_docs.sort(key=lambda x: x['similarity'], reverse=True)
+    return scored_docs[:top_k]
+
+def answer_question(question: str, relevant_docs: list) -> str:
+    if not relevant_docs:
+        return "I couldn't find any relevant news for your question."
+    
+    context_parts = []
+    for doc in relevant_docs:
+        timestamp = datetime.fromisoformat(doc['timestamp'])
+        time_ago = datetime.now() - timestamp
+        
+        if time_ago.total_seconds() < 3600:
+            time_str = f"{int(time_ago.total_seconds() / 60)} minutes ago"
+        else:
+            time_str = f"{int(time_ago.total_seconds() / 3600)} hours ago"
+        
+        context_parts.append(
+            f"**[{doc['ticker']}]** {doc['headline']} "
+            f"*({time_str}, {doc['source']}, relevance: {doc['similarity']:.2f})*"
+        )
+    
+    context = "\n\n".join(context_parts)
+    tickers = [doc['ticker'] for doc in relevant_docs]
+    main_ticker = max(set(tickers), key=tickers.count)
+    
+    response = f"Based on recent market news about **{main_ticker}** and related stocks:\n\n{context}\n\n"
+    
+    if "earnings" in question.lower():
+        response += "Analysis: This appears to be related to earnings reports and financial performance."
+    elif "stock" in question.lower() or "price" in question.lower():
+        response += "Analysis: This involves stock price movements and market reactions."
+    elif any(word in question.lower() for word in ["news", "what", "happening"]):
+        response += "Analysis: Here's the latest news that might be relevant to your query."
+    else:
+        response += "Analysis: This information should help answer your question about recent market activity."
+    
+    return response
+
+def get_pathway_table():
+    df = pd.DataFrame([{
+        "Ticker": item['ticker'],
+        "Headline": item['headline'],
+        "Timestamp": datetime.fromisoformat(item['timestamp']).strftime("%Y-%m-%d %H:%M:%S")
+    } for item in st.session_state.news_data])
+    return df
+
+def main():
+    with st.sidebar:
+        st.title("Configuration")
+
+        theme_choice = st.radio(
+            "Choose Theme:",
+            options=["light", "dark"],
+            index=0 if st.session_state.theme == "light" else 1,
+            help="Toggle between Light and Dark mode"
+        )
+        if theme_choice != st.session_state.theme:
+            set_theme(theme_choice)
+
+        st.markdown("---")
+
+        st.subheader("Data Source")
+        st.info("Currently using mock data for demonstration. In production, this would connect to real-time news feeds.")
+
+        st.subheader("System Status")
+        st.success("Core system operational")
+        st.success("Mock data loaded")
+
+        news_data = st.session_state.news_data
+        st.metric("Total News Items", len(news_data))
+        st.metric("Unique Tickers", len(set(item['ticker'] for item in news_data)))
+
+        st.subheader("API Configuration")
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            st.success("OpenAI API key configured")
+        else:
+            st.warning("OpenAI API key not found")
+
+        # Inject test headline button
+        if st.button("Inject Test Headline"):
+            new_item = {
+                "id": "ACME_001",
+                "ticker": "ACME",
+                "headline": "ACME acquires XYZ…",
+                "timestamp": datetime.now().isoformat(),
+                "source": "Injected",
+                "embedding": mock_embed_text("ACME acquires XYZ…")
+            }
+            st.session_state.news_data.append(new_item)
+            st.success("Test headline injected!")
+            st.experimental_rerun()
+
+        # === Live feed auto-refresh every 5 seconds ===
+        count = st_autorefresh(interval=5 * 1000, limit=None, key="livefeed_autorefresh")
+        st.markdown("Live Market Feed (updates every 5 seconds)")
+
+        # Generate live table data
+        df = get_pathway_table()
+        st.dataframe(df, use_container_width=True)
+
+    # Main content
+    st.title("MarketPulse AI")
+    st.caption("Real-time Financial News Analysis & Q&A")
+
+    tab1, tab2, tab3 = st.tabs(["Chat", "Latest News", "Analytics"])
+
+    with tab1:
+        st.subheader("Ask about market news")
+
+        if "messages" not in st.session_state:
+            st.session_state.messages = [
+                {
+                    "role": "assistant",
+                    "content": "Hi! I'm MarketPulse AI. Ask me about recent market news, earnings, stock movements, or specific companies like Apple, Tesla, Google, Microsoft, NVIDIA, or Meta."
+                }
+            ]
+
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        if prompt := st.chat_input("Ask about stocks, earnings, or market news..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            with st.chat_message("assistant"):
+                with st.spinner("Analyzing market news..."):
+                    relevant_docs = retrieve_relevant_docs(prompt, st.session_state.news_data, top_k=3)
+                    response = answer_question(prompt, relevant_docs)
+                    st.markdown(response)
+
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+    with tab2:
+        st.subheader("Latest Market News")
+        for doc in st.session_state.news_data:
+            timestamp = datetime.fromisoformat(doc['timestamp'])
+            time_ago = datetime.now() - timestamp
+            time_str = (
+                f"{int(time_ago.total_seconds() / 60)}m ago"
+                if time_ago.total_seconds() < 3600
+                else f"{int(time_ago.total_seconds() / 3600)}h ago"
+            )
+            with st.container():
+                col1, col2, col3 = st.columns([1, 6, 2])
+                with col1:
+                    st.markdown(f"**{doc['ticker']}**")
+                with col2:
+                    st.markdown(doc['headline'])
+                with col3:
+                    st.caption(f"{time_str} • {doc['source']}")
+                st.divider()
+
+    with tab3:
+        st.subheader("Market Analytics")
+
+        tickers = [item['ticker'] for item in st.session_state.news_data]
+        ticker_counts = pd.Series(tickers).value_counts()
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.bar_chart(ticker_counts)
+            st.caption("News count by ticker")
+        with col2:
+            timestamps = [datetime.fromisoformat(item['timestamp']) for item in st.session_state.news_data]
+            hours_ago = [(datetime.now() - ts).total_seconds() / 3600 for ts in timestamps]
+            time_df = pd.DataFrame({'Hours Ago': hours_ago, 'Count': [1] * len(hours_ago)})
+            st.scatter_chart(time_df.set_index('Hours Ago'))
+            st.caption("News timing distribution")
+
+    st.markdown("---")
+    st.markdown("MarketPulse AI • Built with Streamlit • Demo Version")
+>>>>>>> 8f8c747 (UI update)
 
 if __name__ == "__main__":
     main()
