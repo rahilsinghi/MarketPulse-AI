@@ -1,16 +1,27 @@
 """
-MarketPulse AI - Main Streamlit Application
+MarketPulse AI - Updated to use real OpenAI retrieval engine
 """
 
 import streamlit as st
-import numpy as np
 import pandas as pd
+import numpy as np
 import os
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Load environment
 load_dotenv()
+
+# Import the real retrieval engine
+from retrieval_engine import answer_query_sync, retrieve_top_k, embed_text
+from ingest_pipeline import (
+    get_latest_rows, 
+    get_news_by_ticker, 
+    get_news_by_category,
+    get_recent_news,
+    get_pipeline_stats,
+    refresh_cache
+)
 
 # Configuration
 st.set_page_config(
@@ -20,269 +31,354 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Mock embedding function (deterministic)
-@st.cache_data
-def mock_embed_text(text: str):
-    """Create deterministic mock embeddings for testing."""
-    np.random.seed(hash(text) % 2**32)
-    return np.random.rand(1536).tolist()
-
-# Mock news data
-@st.cache_data
-def get_mock_news_data():
-    """Get mock news data for testing."""
-    base_time = datetime.now()
-    
-    news_data = [
-        {
-            "id": "AAPL_001",
-            "ticker": "AAPL",
-            "headline": "Apple reports record Q4 earnings, beating analyst expectations by 15%",
-            "timestamp": (base_time - timedelta(hours=2)).isoformat(),
-            "source": "Reuters",
-            "embedding": mock_embed_text("Apple reports record Q4 earnings, beating analyst expectations by 15%")
-        },
-        {
-            "id": "TSLA_001", 
-            "ticker": "TSLA",
-            "headline": "Tesla delivers 500,000 vehicles in Q4, stock surges 8% in after-hours trading",
-            "timestamp": (base_time - timedelta(hours=1)).isoformat(),
-            "source": "Bloomberg",
-            "embedding": mock_embed_text("Tesla delivers 500,000 vehicles in Q4, stock surges 8% in after-hours trading")
-        },
-        {
-            "id": "GOOGL_001",
-            "ticker": "GOOGL", 
-            "headline": "Google announces breakthrough in quantum computing, Alphabet shares jump 12%",
-            "timestamp": (base_time - timedelta(minutes=45)).isoformat(),
-            "source": "TechCrunch",
-            "embedding": mock_embed_text("Google announces breakthrough in quantum computing, Alphabet shares jump 12%")
-        },
-        {
-            "id": "MSFT_001",
-            "ticker": "MSFT",
-            "headline": "Microsoft Azure revenue grows 35% YoY, cloud dominance continues",
-            "timestamp": (base_time - timedelta(hours=3)).isoformat(),
-            "source": "CNBC",
-            "embedding": mock_embed_text("Microsoft Azure revenue grows 35% YoY, cloud dominance continues")
-        },
-        {
-            "id": "NVDA_001",
-            "ticker": "NVDA",
-            "headline": "NVIDIA partners with major automakers for next-gen AI chips",
-            "timestamp": (base_time - timedelta(minutes=20)).isoformat(),
-            "source": "MarketWatch", 
-            "embedding": mock_embed_text("NVIDIA partners with major automakers for next-gen AI chips")
-        },
-        {
-            "id": "META_001",
-            "ticker": "META",
-            "headline": "Meta's VR division shows promising growth, metaverse investments paying off",
-            "timestamp": (base_time - timedelta(hours=4)).isoformat(),
-            "source": "The Verge",
-            "embedding": mock_embed_text("Meta's VR division shows promising growth, metaverse investments paying off")
-        }
-    ]
-    
-    return news_data
-
-# Similarity calculation
-def cosine_similarity(a, b):
-    """Calculate cosine similarity between two vectors."""
-    a, b = np.array(a), np.array(b)
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-# Retrieval function
-def retrieve_relevant_docs(question: str, data: list, top_k: int = 3):
-    """Retrieve most relevant documents for a question."""
-    question_embedding = mock_embed_text(question)
-    
-    # Calculate similarities
-    scored_docs = []
-    for doc in data:
-        similarity = cosine_similarity(question_embedding, doc['embedding'])
-        scored_docs.append({
-            **doc,
-            'similarity': similarity
-        })
-    
-    # Sort by similarity and return top-k
-    scored_docs.sort(key=lambda x: x['similarity'], reverse=True)
-    return scored_docs[:top_k]
-
-# Simple Q&A function
-def answer_question(question: str, relevant_docs: list) -> str:
-    """Generate answer based on relevant documents."""
-    if not relevant_docs:
-        return "I couldn't find any relevant news for your question."
-    
-    # Create context from relevant documents
-    context_parts = []
-    for doc in relevant_docs:
-        timestamp = datetime.fromisoformat(doc['timestamp'])
-        time_ago = datetime.now() - timestamp
-        
-        if time_ago.total_seconds() < 3600:  # Less than 1 hour
-            time_str = f"{int(time_ago.total_seconds() / 60)} minutes ago"
-        else:
-            time_str = f"{int(time_ago.total_seconds() / 3600)} hours ago"
-        
-        context_parts.append(
-            f"**[{doc['ticker']}]** {doc['headline']} "
-            f"*({time_str}, {doc['source']}, relevance: {doc['similarity']:.2f})*"
-        )
-    
-    context = "\n\n".join(context_parts)
-    
-    # Simple response generation
-    tickers = [doc['ticker'] for doc in relevant_docs]
-    main_ticker = max(set(tickers), key=tickers.count)
-    
-    response = f"Based on recent market news about **{main_ticker}** and related stocks:\n\n{context}\n\n"
-    
-    # Add simple analysis
-    if "earnings" in question.lower():
-        response += "💰 **Analysis**: This appears to be related to earnings reports and financial performance."
-    elif "stock" in question.lower() or "price" in question.lower():
-        response += "📈 **Analysis**: This involves stock price movements and market reactions."
-    elif any(word in question.lower() for word in ["news", "what", "happening"]):
-        response += "📰 **Analysis**: Here's the latest news that might be relevant to your query."
-    else:
-        response += "🔍 **Analysis**: This information should help answer your question about recent market activity."
-    
-    return response
-
-# Main app
 def main():
-    # Get news data
-    news_data = get_mock_news_data()
-    
     # Sidebar
     with st.sidebar:
         st.title("🔧 Configuration")
         
-        # Data source info
-        st.subheader("📊 Data Source")
-        st.info("Currently using mock data for demonstration. In production, this would connect to real-time news feeds.")
-        
         # System status
         st.subheader("⚡ System Status")
-        st.success("✅ Core system operational")
-        st.success("✅ Mock data loaded")
         
-        # Stats
-        st.metric("Total News Items", len(news_data))
-        st.metric("Unique Tickers", len(set(item['ticker'] for item in news_data)))
-        
-        # API Configuration
-        st.subheader("🔑 API Configuration")
+        # Check environment
         openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key:
-            st.success("✅ OpenAI API key configured")
+        mock_mode = os.getenv("MOCK_EMBEDDING", "false").lower() == "true"
+        
+        if openai_key and not mock_mode:
+            st.success("✅ OpenAI API Active")
+            st.info("🔄 Using real AI embeddings & responses")
+        elif openai_key and mock_mode:
+            st.warning("⚠️ Mock mode enabled")
+            st.info("🧪 Using mock embeddings (set MOCK_EMBEDDING=false for real AI)")
         else:
-            st.warning("⚠️ OpenAI API key not found")
+            st.error("❌ OpenAI API not configured")
+            st.info("🔑 Set OPENAI_API_KEY for real AI")
+        
+        # Pipeline stats
+        try:
+            stats = get_pipeline_stats()
+            st.metric("Total Articles", stats['total_articles'])
+            st.metric("With Embeddings", stats['articles_with_embeddings'])
+            st.metric("Unique Tickers", stats['unique_tickers'])
+            st.metric("Avg Age (hours)", f"{stats['avg_hours_ago']:.1f}")
+            
+            if st.button("🔄 Refresh Data"):
+                with st.spinner("Refreshing..."):
+                    refresh_cache()
+                st.success("Data refreshed!")
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"❌ Pipeline error: {e}")
+        
+        # Settings
+        st.subheader("⚙️ Query Settings")
+        top_k = st.slider("Results per query", 1, 10, 4)
+        
+        # Toggle modes
+        if st.checkbox("Force mock mode", value=mock_mode):
+            os.environ["MOCK_EMBEDDING"] = "true"
+        else:
+            os.environ["MOCK_EMBEDDING"] = "false"
 
     # Main content
     st.title("💹 MarketPulse AI")
-    st.caption("Real-time Financial News Analysis & Q&A")
-
+    st.caption("Real-time Financial News Analysis with AI-Powered Retrieval")
+    
+    # Show current mode
+    if openai_key and not mock_mode:
+        st.success("🤖 **AI Mode Active** - Using OpenAI for embeddings and responses")
+    else:
+        st.info("🧪 **Demo Mode** - Using mock data for testing")
+    
     # Tabs
-    tab1, tab2, tab3 = st.tabs(["💬 Chat", "📰 Latest News", "📊 Analytics"])
-
+    tab1, tab2, tab3, tab4 = st.tabs(["💬 AI Chat", "📰 Live News", "📊 Analytics", "🔧 Debug"])
+    
     with tab1:
-        st.subheader("Ask about market news")
+        st.subheader("Ask AI about market news")
         
         # Initialize chat history
-        if "messages" not in st.session_state:
-            st.session_state.messages = [
+        if "ai_messages" not in st.session_state:
+            st.session_state.ai_messages = [
                 {
-                    "role": "assistant", 
-                    "content": "Hi! I'm MarketPulse AI. Ask me about recent market news, earnings, stock movements, or specific companies like Apple, Tesla, Google, Microsoft, NVIDIA, or Meta."
+                    "role": "assistant",
+                    "content": "Hi! I'm MarketPulse AI. I use advanced semantic search and AI to analyze financial news. Ask me about specific companies, earnings, market trends, or any financial topic!"
                 }
             ]
         
         # Display chat messages
-        for message in st.session_state.messages:
+        for message in st.session_state.ai_messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
         
         # Chat input
-        if prompt := st.chat_input("Ask about stocks, earnings, or market news..."):
+        if prompt := st.chat_input("Ask about stocks, earnings, market news, or financial trends..."):
             # Add user message
-            st.session_state.messages.append({"role": "user", "content": prompt})
+            st.session_state.ai_messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
             
-            # Generate response
+            # Generate AI response
             with st.chat_message("assistant"):
-                with st.spinner("Analyzing market news..."):
-                    # Retrieve relevant documents
-                    relevant_docs = retrieve_relevant_docs(prompt, news_data, top_k=3)
-                    
-                    # Generate answer
-                    response = answer_question(prompt, relevant_docs)
-                    
+                with st.spinner("🤖 AI analyzing news and generating response..."):
+                    # Use the real retrieval engine
+                    response = answer_query_sync(prompt, top_k=top_k)
                     st.markdown(response)
             
-            # Add assistant response to chat history
-            st.session_state.messages.append({"role": "assistant", "content": response})
-
+            # Add assistant response
+            st.session_state.ai_messages.append({"role": "assistant", "content": response})
+    
     with tab2:
-        st.subheader("📰 Latest Market News")
+        st.subheader("📰 Live Financial News")
         
-        # Show news data
-        for doc in news_data:
-            timestamp = datetime.fromisoformat(doc['timestamp'])
-            time_ago = datetime.now() - timestamp
-            
-            if time_ago.total_seconds() < 3600:
-                time_str = f"{int(time_ago.total_seconds() / 60)}m ago"
+        # Filter options
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            filter_type = st.selectbox("Filter by", ["All Recent", "Ticker", "Category"])
+        
+        with col2:
+            if filter_type == "Ticker":
+                available_tickers = ["AAPL", "TSLA", "GOOGL", "MSFT", "NVDA", "META", "AMZN", "NFLX", "SPY", "BTC"]
+                selected_ticker = st.selectbox("Select Ticker", available_tickers)
+            elif filter_type == "Category":
+                available_categories = ["earnings", "partnership", "innovation", "delivery", "market", "crypto", "growth", "contract"]
+                selected_category = st.selectbox("Select Category", available_categories)
+        
+        with col3:
+            hours_filter = st.selectbox("Time Range", [6, 12, 24, 48], index=2)
+            st.caption(f"Last {hours_filter} hours")
+        
+        # Get filtered news
+        try:
+            if filter_type == "Ticker":
+                news_data = get_news_by_ticker(selected_ticker)
+            elif filter_type == "Category":
+                news_data = get_news_by_category(selected_category)
             else:
-                time_str = f"{int(time_ago.total_seconds() / 3600)}h ago"
+                news_data = get_recent_news(hours=hours_filter)
             
-            with st.container():
-                col1, col2, col3 = st.columns([1, 6, 2])
-                
-                with col1:
-                    st.markdown(f"**{doc['ticker']}**")
-                
-                with col2:
-                    st.markdown(doc['headline'])
-                
-                with col3:
-                    st.caption(f"{time_str} • {doc['source']}")
-                
-                st.divider()
-
+            # Display news with enhanced formatting
+            for article in news_data:
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([1, 5, 1, 2])
+                    
+                    with col1:
+                        ticker = article.get('ticker', 'N/A')
+                        st.markdown(f"**{ticker}**")
+                        
+                        # Add sentiment indicator if available
+                        sentiment = article.get('sentiment', 'neutral')
+                        if sentiment == 'positive':
+                            st.markdown("🟢")
+                        elif sentiment == 'negative':
+                            st.markdown("🔴")
+                        else:
+                            st.markdown("⚪")
+                    
+                    with col2:
+                        headline = article.get('headline', 'No headline')
+                        st.markdown(headline)
+                        
+                        # Show similarity score if searching
+                        if 'similarity' in article:
+                            st.caption(f"Relevance: {article['similarity']:.3f}")
+                    
+                    with col3:
+                        category = article.get('category', 'general')
+                        # Create colored badges for categories
+                        if category == 'earnings':
+                            st.markdown("🟡 **Earnings**")
+                        elif category == 'partnership':
+                            st.markdown("🔵 **Partnership**")
+                        elif category == 'innovation':
+                            st.markdown("🟣 **Innovation**")
+                        else:
+                            st.markdown(f"⚫ **{category.title()}**")
+                    
+                    with col4:
+                        timestamp = article.get('timestamp', '')
+                        if timestamp:
+                            try:
+                                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                time_ago = datetime.now() - dt.replace(tzinfo=None)
+                                if time_ago.total_seconds() < 3600:
+                                    time_str = f"{int(time_ago.total_seconds() / 60)}m ago"
+                                else:
+                                    time_str = f"{int(time_ago.total_seconds() / 3600)}h ago"
+                                st.caption(f"🕒 {time_str}")
+                                st.caption(f"📰 {article.get('source', 'Unknown')}")
+                            except:
+                                st.caption(f"📰 {article.get('source', 'Unknown')}")
+                    
+                    st.divider()
+            
+            if not news_data:
+                st.info("No news found for the selected filters.")
+                    
+        except Exception as e:
+            st.error(f"Error loading news: {e}")
+    
     with tab3:
         st.subheader("📊 Market Analytics")
         
-        # Ticker distribution
-        tickers = [item['ticker'] for item in news_data]
-        ticker_counts = pd.Series(tickers).value_counts()
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.bar_chart(ticker_counts)
-            st.caption("News count by ticker")
-        
-        with col2:
-            # Time distribution
-            timestamps = [datetime.fromisoformat(item['timestamp']) for item in news_data]
-            hours_ago = [(datetime.now() - ts).total_seconds() / 3600 for ts in timestamps]
+        try:
+            stats = get_pipeline_stats()
             
-            time_df = pd.DataFrame({
-                'Hours Ago': hours_ago,
-                'Count': [1] * len(hours_ago)
-            })
+            # Overview metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("📰 Total Articles", stats['total_articles'])
+            with col2:
+                st.metric("🧠 With AI Embeddings", stats['articles_with_embeddings'])
+            with col3:
+                st.metric("🏢 Unique Companies", stats['unique_tickers'])
+            with col4:
+                cache_age = stats.get('cache_age_seconds', 0)
+                st.metric("⚡ Cache Age", f"{cache_age:.1f}s")
             
-            st.scatter_chart(time_df.set_index('Hours Ago'))
-            st.caption("News timing distribution")
+            # Charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("📈 Company Coverage")
+                ticker_df = pd.DataFrame(
+                    list(stats['ticker_distribution'].items()),
+                    columns=['Company', 'Articles']
+                )
+                st.bar_chart(ticker_df.set_index('Company'))
+            
+            with col2:
+                st.subheader("📋 News Categories")
+                category_df = pd.DataFrame(
+                    list(stats['category_distribution'].items()),
+                    columns=['Category', 'Count']
+                )
+                st.bar_chart(category_df.set_index('Category'))
+            
+            # Sentiment analysis
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("😊 Sentiment Analysis")
+                sentiment_df = pd.DataFrame(
+                    list(stats['sentiment_distribution'].items()),
+                    columns=['Sentiment', 'Count']
+                )
+                st.bar_chart(sentiment_df.set_index('Sentiment'))
+            
+            with col2:
+                st.subheader("📊 Key Metrics")
+                avg_age = stats.get('avg_hours_ago', 0)
+                st.metric("⏱️ Average News Age", f"{avg_age:.1f} hours")
+                
+                embedding_rate = (stats['articles_with_embeddings'] / stats['total_articles']) * 100
+                st.metric("🧠 AI Processing Rate", f"{embedding_rate:.1f}%")
+                
+                recent_count = len(get_recent_news(hours=6))
+                st.metric("🔥 Recent News (6h)", recent_count)
+            
+        except Exception as e:
+            st.error(f"Error loading analytics: {e}")
+    
+    with tab4:
+        st.subheader("🔧 Debug & Testing")
+        
+        # Test embedding
+        with st.expander("🧠 Test AI Embedding"):
+            test_text = st.text_input("Text to embed:", "Apple quarterly earnings report")
+            if st.button("Generate Embedding"):
+                with st.spinner("Generating AI embedding..."):
+                    try:
+                        start_time = datetime.now()
+                        embedding = embed_text(test_text)
+                        end_time = datetime.now()
+                        duration = (end_time - start_time).total_seconds()
+                        
+                        st.success(f"✅ Generated {len(embedding)}-dimensional embedding in {duration:.2f}s")
+                        st.code(f"First 10 values: {embedding[:10]}")
+                        
+                        # Show if using real AI or mock
+                        if os.getenv("MOCK_EMBEDDING", "false").lower() == "true":
+                            st.info("🧪 Using mock embedding (deterministic)")
+                        else:
+                            st.success("🤖 Using real OpenAI embedding")
+                            
+                    except Exception as e:
+                        st.error(f"❌ Failed: {e}")
+        
+        # Test retrieval
+        with st.expander("🔍 Test Document Retrieval"):
+            query = st.text_input("Search query:", "Tesla delivery numbers")
+            if st.button("Test AI Search"):
+                with st.spinner("AI searching documents..."):
+                    try:
+                        start_time = datetime.now()
+                        query_vec = embed_text(query)
+                        results = retrieve_top_k(query_vec, k=5)
+                        end_time = datetime.now()
+                        duration = (end_time - start_time).total_seconds()
+                        
+                        st.success(f"✅ Found {len(results)} results in {duration:.2f}s")
+                        
+                        for i, result in enumerate(results):
+                            with st.container():
+                                col1, col2, col3 = st.columns([1, 5, 1])
+                                
+                                with col1:
+                                    st.write(f"**#{i+1}**")
+                                    similarity = result.get('similarity', 0)
+                                    st.metric("Similarity", f"{similarity:.3f}")
+                                
+                                with col2:
+                                    ticker = result.get('ticker', 'N/A')
+                                    headline = result.get('headline', 'No headline')
+                                    st.write(f"**[{ticker}]** {headline}")
+                                    
+                                    source = result.get('source', 'Unknown')
+                                    category = result.get('category', 'general')
+                                    st.caption(f"📰 {source} • 📋 {category}")
+                                
+                                with col3:
+                                    timestamp = result.get('timestamp', '')
+                                    if timestamp:
+                                        try:
+                                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                            time_ago = datetime.now() - dt.replace(tzinfo=None)
+                                            if time_ago.total_seconds() < 3600:
+                                                time_str = f"{int(time_ago.total_seconds() / 60)}m"
+                                            else:
+                                                time_str = f"{int(time_ago.total_seconds() / 3600)}h"
+                                            st.caption(f"🕒 {time_str} ago")
+                                        except:
+                                            st.caption("🕒 Recent")
+                                
+                                st.divider()
+                                
+                    except Exception as e:
+                        st.error(f"❌ Search failed: {e}")
+        
+        # Environment info
+        with st.expander("🔧 System Information"):
+            st.code(f"""
+Environment Variables:
+OPENAI_API_KEY: {'✅ Set' if os.getenv('OPENAI_API_KEY') else '❌ Not set'}
+MOCK_EMBEDDING: {os.getenv('MOCK_EMBEDDING', 'false')}
 
-    # Footer
-    st.markdown("---")
-    st.markdown("**MarketPulse AI** • Built with Streamlit • Demo Version")
+System Info:
+Streamlit Version: {st.__version__}
+Cache Status: Active
+AI Mode: {'Mock' if os.getenv('MOCK_EMBEDDING', 'false').lower() == 'true' else 'Real OpenAI'}
+            """)
+        
+        # Quick test button
+        if st.button("🚀 Quick AI Test"):
+            with st.spinner("Running quick AI test..."):
+                try:
+                    test_result = answer_query_sync("Test AI functionality", top_k=2)
+                    st.success("✅ AI test completed!")
+                    st.write("**Test Result:**")
+                    st.write(test_result)
+                except Exception as e:
+                    st.error(f"❌ AI test failed: {e}")
 
 if __name__ == "__main__":
     main()

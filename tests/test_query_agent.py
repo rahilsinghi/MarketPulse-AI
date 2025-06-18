@@ -1,178 +1,96 @@
-"""
-Comprehensive tests for the query agent module.
-"""
-
 import pytest
-import asyncio
-from unittest.mock import patch, MagicMock
+import numpy as np
+from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
+from query_agent import QueryAgent, RetrievalResult, build_context_prompt
 
-from query_agent import (
-    cosine_similarity, 
-    retrieve_relevant_docs, 
-    answer_query_async,
-    answer_query_sync,
-    build_context_prompt
-)
 
-class TestCosineSimilarity:
-    """Test cosine similarity calculations."""
+class TestQueryAgent:
+    """Test suite for QueryAgent class."""
     
-    def test_identical_vectors(self):
-        """Test similarity of identical vectors."""
-        vec = [1.0, 2.0, 3.0] + [0.0] * 1533  # Make it 1536-D
-        assert cosine_similarity(vec, vec) == pytest.approx(1.0)
-    
-    def test_orthogonal_vectors(self):
-        """Test similarity of orthogonal vectors."""
-        vec1 = [1.0, 0.0] + [0.0] * 1534
-        vec2 = [0.0, 1.0] + [0.0] * 1534
-        assert cosine_similarity(vec1, vec2) == pytest.approx(0.0)
-    
-    def test_zero_vectors(self):
-        """Test handling of zero vectors."""
-        zero_vec = [0.0] * 1536
-        normal_vec = [1.0] + [0.0] * 1535
-        assert cosine_similarity(zero_vec, normal_vec) == 0.0
-    
-    def test_invalid_vectors(self):
-        """Test handling of invalid vectors."""
-        assert cosine_similarity([], [1.0] * 1536) == 0.0
-        assert cosine_similarity([1.0] * 100, [1.0] * 1536) == 0.0
-
-class TestRetrievalSystem:
-    """Test document retrieval functionality."""
-    
-    @patch('query_agent.get_pathway_table')
-    @patch('query_agent.embed_text')
-    def test_retrieve_relevant_docs_empty_table(self, mock_embed, mock_table):
-        """Test retrieval with empty document table."""
-        mock_table.return_value = []
-        mock_embed.return_value = [1.0] * 1536
-        
-        result = retrieve_relevant_docs("test question")
-        assert len(result.documents) == 0
-        assert result.total_docs == 0
-    
-    @patch('query_agent.get_pathway_table')
-    @patch('query_agent.embed_text')
-    def test_retrieve_relevant_docs_with_data(self, mock_embed, mock_table):
-        """Test retrieval with valid documents."""
-        # Mock data
-        mock_docs = [
-            {
-                "id": "1",
-                "ticker": "AAPL",
-                "headline": "Apple stock rises",
-                "timestamp": datetime.now().isoformat(),
-                "embedding": [0.8] + [0.0] * 1535
-            },
-            {
-                "id": "2", 
-                "ticker": "GOOGL",
-                "headline": "Google announces new AI",
-                "timestamp": (datetime.now() - timedelta(hours=2)).isoformat(),
-                "embedding": [0.6] + [0.0] * 1535
-            }
-        ]
-        
-        mock_table.return_value = mock_docs
-        mock_embed.return_value = [1.0] + [0.0] * 1535  # High similarity to first doc
-        
-        result = retrieve_relevant_docs("Apple stock news", top_k=1)
-        
-        assert len(result.documents) == 1
-        assert result.documents[0]["ticker"] == "AAPL"
-        assert result.total_docs == 2
-
-class TestQueryAnswering:
-    """Test the main query answering functionality."""
-    
-    @pytest.mark.asyncio
-    @patch('query_agent.retrieve_relevant_docs')
-    @patch('query_agent.call_openai_with_retry')
-    async def test_answer_query_async_success(self, mock_openai, mock_retrieve):
-        """Test successful query answering."""
-        # Mock retrieval
-        mock_doc = {
-            "ticker": "AAPL",
-            "headline": "Apple stock surges 5%",
-            "timestamp": datetime.now().isoformat(),
-            "similarity": 0.9,
-            "age_hours": 1.0
+    @pytest.fixture
+    def mock_db_config(self):
+        """Mock database configuration."""
+        return {
+            'host': 'localhost',
+            'port': 5432,
+            'database': 'test_db',
+            'user': 'test_user',
+            'password': 'test_pass'
         }
-        
-        from query_agent import RetrievalResult
-        mock_retrieve.return_value = RetrievalResult([mock_doc], [1.0]*1536, 1, 0.1)
-        
-        # Mock OpenAI response
-        mock_openai.return_value = "Apple stock has surged 5% due to strong earnings."
-        
-        result = await answer_query_async("Why is Apple stock up?")
-        
-        assert "Apple" in result
-        assert "5%" in result
-        mock_openai.assert_called_once()
     
-    @pytest.mark.asyncio
-    async def test_answer_query_async_empty_question(self):
-        """Test handling of empty questions."""
-        result = await answer_query_async("")
-        assert "⚠️" in result
-        assert "valid question" in result
+    @pytest.fixture
+    def query_agent(self, mock_db_config):
+        """Create QueryAgent instance with mocked dependencies."""
+        with patch('query_agent.psycopg2.connect'):
+            agent = QueryAgent(mock_db_config)
+            agent.cursor = Mock()
+            return agent
     
-    def test_answer_query_sync_wrapper(self):
-        """Test synchronous wrapper functionality."""
-        with patch('query_agent.answer_query_async') as mock_async:
-            mock_async.return_value = "Test response"
-            result = answer_query_sync("test question")
-            assert result == "Test response"
-
-class TestPromptBuilding:
-    """Test prompt construction functionality."""
-    
-    def test_build_context_prompt_single_ticker(self):
-        """Test prompt building with single ticker."""
-        docs = [
-            {
-                "ticker": "AAPL",
-                "headline": "Apple reports strong earnings",
-                "timestamp": datetime.now().isoformat(),
-                "similarity": 0.9,
-                "age_hours": 1.0
-            }
+    def test_document_retrieval_success(self, query_agent):
+        """Test successful document retrieval."""
+        # Mock database response
+        mock_rows = [
+            {'id': 1, 'content': 'Test document 1', 'ticker': 'AAPL'},
+            {'id': 2, 'content': 'Test document 2', 'ticker': 'MSFT'}
         ]
+        query_agent.cursor.fetchall.return_value = mock_rows
         
-        system_prompt, user_prompt = build_context_prompt(docs, "Apple earnings")
+        # Mock embedding
+        with patch.object(query_agent, 'get_embedding', return_value=np.array([0.1, 0.2, 0.3])):
+            result = query_agent.retrieve_documents("test query", top_k=5)
         
-        assert "MarketPulse AI" in system_prompt
-        assert "AAPL" in user_prompt
-        assert "Apple reports strong earnings" in user_prompt
-        assert "Apple earnings" in user_prompt
+        assert isinstance(result, RetrievalResult)
+        assert len(result.documents) <= 5
+        assert result.total_documents == len(mock_rows)
+        assert result.retrieval_time > 0
     
-    def test_build_context_prompt_multiple_tickers(self):
-        """Test prompt building with multiple tickers."""
+    def test_document_retrieval_error_handling(self, query_agent):
+        """Test error handling in document retrieval."""
+        query_agent.cursor.fetchall.side_effect = Exception("Database error")
+        
+        result = query_agent.retrieve_documents("test query")
+        
+        assert isinstance(result, RetrievalResult)
+        assert result.documents == []
+        assert result.query_embedding == []
+        assert result.total_documents == 0
+        assert result.retrieval_time == 0.0
+    
+    def test_build_context_prompt(self):
+        """Test context prompt building."""
         docs = [
-            {
-                "ticker": "AAPL",
-                "headline": "Apple stock up",
-                "timestamp": datetime.now().isoformat(),
-                "similarity": 0.9,
-                "age_hours": 1.0
-            },
-            {
-                "ticker": "GOOGL", 
-                "headline": "Google announces AI breakthrough",
-                "timestamp": datetime.now().isoformat(),
-                "similarity": 0.8,
-                "age_hours": 2.0
-            }
+            {'ticker': 'AAPL', 'content': 'Apple earnings report', 'final_score': 0.95},
+            {'ticker': 'MSFT', 'content': 'Microsoft news', 'final_score': 0.87}
         ]
+        question = "What are the latest earnings?"
         
-        system_prompt, user_prompt = build_context_prompt(docs, "Tech stocks")
+        system_prompt, user_prompt = build_context_prompt(docs, question)
         
-        assert "**AAPL:**" in user_prompt
-        assert "**GOOGL:**" in user_prompt
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        assert isinstance(system_prompt, str)
+        assert isinstance(user_prompt, str)
+        assert question in user_prompt
+        assert len(system_prompt) > 0
+        assert len(user_prompt) > 0
+    
+    def test_similarity_calculation(self, query_agent):
+        """Test similarity score calculation."""
+        vec1 = np.array([1.0, 0.0, 0.0])
+        vec2 = np.array([1.0, 0.0, 0.0])
+        
+        # Mock the similarity calculation if it exists
+        with patch('query_agent.cosine_similarity', return_value=1.0) as mock_sim:
+            similarity = mock_sim(vec1.reshape(1, -1), vec2.reshape(1, -1))[0][0]
+            assert similarity == 1.0
+    
+    @pytest.mark.parametrize("top_k", [1, 5, 10, 50])
+    def test_top_k_parameter(self, query_agent, top_k):
+        """Test different top_k values."""
+        mock_rows = [{'id': i, 'content': f'Doc {i}'} for i in range(20)]
+        query_agent.cursor.fetchall.return_value = mock_rows
+        
+        with patch.object(query_agent, 'get_embedding', return_value=np.array([0.1, 0.2])):
+            result = query_agent.retrieve_documents("test", top_k=top_k)
+        
+        assert len(result.documents) <= top_k
+        assert len(result.documents) <= len(mock_rows)

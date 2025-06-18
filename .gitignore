@@ -1,0 +1,122 @@
+# Python Virtual Environments
+venv/
+venv_*/
+.venv/
+env/
+ENV/
+.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Streamlit
+.streamlit/
+.streamlit/secrets.toml
+
+# Large binary files
+*.dylib
+*.so
+*.dll
+*.exe
+*.dmg
+*.pkg
+*.deb
+*.rpm
+
+# Data files
+*.csv
+*.json
+*.pkl
+*.pickle
+*.parquet
+*.feather
+
+# Model files
+*.model
+*.bin
+*.h5
+*.hdf5
+*.pb
+
+# Documentation
+docs/_build/
+.sphinx/
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Large JavaScript maps
+*.js.map
+
+# Git large files
+*.pack

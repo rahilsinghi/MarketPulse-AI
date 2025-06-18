@@ -1,311 +1,372 @@
 """
-Enhanced Pathway streaming pipeline with monitoring, health checks,
-and better error handling.
+MarketPulse AI - Enhanced Ingest Pipeline
+Updated to work with the new retrieval engine.
 """
 
-import json
 import os
-import threading
 import time
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, Any, Iterator, List, Optional
-from dataclasses import dataclass, asdict
-import pickle
+from typing import List, Dict, Optional
+import threading
+from dotenv import load_dotenv
 
-import pathway as pw
+# Load environment
+load_dotenv()
 
-from utils import embed_text, validate_news_record
-
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ─── Configuration ─────────────────────────────────────────────────────────────
-NEWS_FILE = Path(os.getenv("NEWS_SAMPLE_FILE", "data/sample_news.jsonl")).expanduser()
-CHECKPOINT_FILE = Path("data/pipeline_checkpoint.pkl")
-HEALTH_CHECK_INTERVAL = 30  # seconds
+# Thread safety
+_data_lock = threading.Lock()
+_cached_rows = []
+_last_update = None
+CACHE_DURATION = 60  # Cache for 60 seconds
 
-@dataclass
-class PipelineStats:
-    """Pipeline monitoring statistics."""
-    total_processed: int = 0
-    successful_embeddings: int = 0
-    failed_embeddings: int = 0
-    last_processed: Optional[datetime] = None
-    pipeline_start_time: Optional[datetime] = None
-    errors: List[str] = None
-    
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
-
-# Global pipeline statistics
-pipeline_stats = PipelineStats()
-
-# ─── Enhanced news generator with error handling ───────────────────────────────
-def news_generator() -> Iterator[Dict[str, Any]]:
+def get_latest_rows() -> List[Dict]:
     """
-    Enhanced news generator with checkpoint recovery and error handling.
+    Enhanced implementation of get_latest_rows().
+    Returns fresh financial news data with embeddings.
+    
+    In production, this would:
+    - Connect to real RSS feeds (Reuters, Bloomberg, Yahoo Finance)
+    - Parse and normalize news data
+    - Generate embeddings for each article
+    - Cache results for performance
     """
-    global pipeline_stats
+    global _cached_rows, _last_update
     
-    if not NEWS_FILE.exists():
-        logger.error(f"Sample news file not found: {NEWS_FILE}")
-        # Create a dummy file for demo purposes
-        NEWS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with NEWS_FILE.open('w') as f:
-            f.write('{"id": "demo_1", "ticker": "DEMO", "headline": "Demo news for testing"}\n')
-        logger.info(f"Created demo news file: {NEWS_FILE}")
-    
-    # Load checkpoint if exists
-    start_line = 0
-    if CHECKPOINT_FILE.exists():
-        try:
-            with CHECKPOINT_FILE.open('rb') as f:
-                checkpoint_data = pickle.load(f)
-                start_line = checkpoint_data.get('last_line', 0)
-                logger.info(f"Resuming from line {start_line}")
-        except Exception as e:
-            logger.warning(f"Failed to load checkpoint: {e}")
-    
-    pipeline_stats.pipeline_start_time = datetime.now()
-    
-    try:
-        with NEWS_FILE.open() as f:
-            # Skip to checkpoint
-            for _ in range(start_line):
-                next(f, None)
-            
-            line_num = start_line
-            for line in f:
-                try:
-                    obj = json.loads(line.strip())
-                    
-                    # Validate and enrich
-                    obj.setdefault("timestamp", datetime.utcnow().isoformat())
-                    obj.setdefault("id", f"{obj.get('ticker', 'UNK')}_{int(time.time()*1e6)}")
-                    
-                    if validate_news_record(obj):
-                        pipeline_stats.total_processed += 1
-                        pipeline_stats.last_processed = datetime.now()
-                        
-                        # Save checkpoint periodically
-                        if line_num % 10 == 0:
-                            save_checkpoint(line_num)
-                        
-                        yield obj
-                        time.sleep(3)  # Simulate live feed
-                        
-                    else:
-                        logger.warning(f"Invalid news record on line {line_num}: {obj}")
-                        pipeline_stats.errors.append(f"Invalid record at line {line_num}")
-                        
-                except json.JSONDecodeError as e:
-                    logger.error(f"JSON decode error on line {line_num}: {e}")
-                    pipeline_stats.errors.append(f"JSON error at line {line_num}: {str(e)}")
-                except Exception as e:
-                    logger.error(f"Unexpected error processing line {line_num}: {e}")
-                    pipeline_stats.errors.append(f"Processing error at line {line_num}: {str(e)}")
-                
-                line_num += 1
-                
-    except Exception as e:
-        logger.error(f"Critical error in news generator: {e}")
-        pipeline_stats.errors.append(f"Critical generator error: {str(e)}")
-
-def save_checkpoint(line_num: int):
-    """Save processing checkpoint."""
-    try:
-        CHECKPOINT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with CHECKPOINT_FILE.open('wb') as f:
-            pickle.dump({'last_line': line_num, 'timestamp': datetime.now()}, f)
-    except Exception as e:
-        logger.error(f"Failed to save checkpoint: {e}")
-
-# ─── Enhanced embedding UDF with error handling ────────────────────────────────
-@pw.udf
-def safe_embed(headline: str) -> List[float]:
-    """Pathway UDF with error handling and monitoring."""
-    global pipeline_stats
-    
-    try:
-        if not headline or not headline.strip():
-            logger.warning("Empty headline provided for embedding")
-            pipeline_stats.failed_embeddings += 1
-            return [0.0] * 1536  # Return zero vector
+    with _data_lock:
+        # Check if we have fresh cached data
+        now = time.time()
+        if (_last_update and 
+            _cached_rows and 
+            now - _last_update < CACHE_DURATION):
+            logger.debug(f"Returning cached data ({len(_cached_rows)} rows)")
+            return _cached_rows.copy()
         
-        embedding = embed_text(headline)
-        if embedding:
-            pipeline_stats.successful_embeddings += 1
-            logger.debug(f"Successfully embedded: {headline[:50]}...")
-            return embedding
-        else:
-            pipeline_stats.failed_embeddings += 1
-            logger.error(f"Failed to embed: {headline[:50]}...")
-            return [0.0] * 1536
-            
-    except Exception as e:
-        pipeline_stats.failed_embeddings += 1
-        pipeline_stats.errors.append(f"Embedding error: {str(e)}")
-        logger.error(f"Error in safe_embed: {e}")
-        return [0.0] * 1536
-
-# ─── Enhanced Pathway pipeline ─────────────────────────────────────────────────
-try:
-    # Define the streaming source
-    news_src = pw.io.python.read(
-        news_generator,
-        schema=pw.schema_builder(
-            id=str,
-            ticker=str,
-            headline=str,
-            timestamp=str,
-        ),
-        mode="streaming"
-    )
-
-    # Add embeddings with error handling
-    news_table = news_src.select(
-        id=pw.this.id,
-        ticker=pw.this.ticker,
-        headline=pw.this.headline,
-        timestamp=pw.this.timestamp,
-        embedding=safe_embed(pw.this.headline),
-    )
-    
-    logger.info("Pathway pipeline initialized successfully")
-    
-except Exception as e:
-    logger.error(f"Failed to initialize Pathway pipeline: {e}")
-    news_table = None
-
-# ─── Enhanced data access with caching ─────────────────────────────────────────
-_cache = {"data": [], "last_update": None, "cache_duration": 5}  # 5 second cache
-
-def get_latest_rows(limit: int = 200, force_refresh: bool = False) -> List[Dict[str, Any]]:
-    """
-    Enhanced data access with caching and error handling.
-    """
-    global _cache
-    
-    try:
-        # Check cache
-        now = datetime.now()
-        if (not force_refresh and 
-            _cache["last_update"] and 
-            (now - _cache["last_update"]).seconds < _cache["cache_duration"]):
-            logger.debug("Returning cached data")
-            return _cache["data"]
+        logger.info("Fetching fresh news data...")
         
-        if news_table is None:
-            logger.warning("News table not initialized")
-            return []
+        # Generate fresh mock data (in production, this would fetch real data)
+        fresh_rows = _generate_mock_news_data()
         
-        # Convert Pathway table to pandas
-        import pandas as pd
-        df = pw.debug.table_to_pandas(news_table)
-        
-        if df.empty:
-            logger.info("No data in news table yet")
-            return []
-        
-        # Filter out zero embeddings (failed embeddings)
-        df = df[df['embedding'].apply(lambda x: sum(x) != 0 if isinstance(x, list) else True)]
-        
-        # Sort by timestamp (newest first)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df = df.sort_values("timestamp", ascending=False).head(limit)
+        # Add embeddings to each row
+        fresh_rows = _add_embeddings_to_rows(fresh_rows)
         
         # Update cache
-        result = df.to_dict("records")
-        _cache["data"] = result
-        _cache["last_update"] = now
+        _cached_rows = fresh_rows
+        _last_update = now
         
-        logger.info(f"Retrieved {len(result)} rows from Pathway table")
-        return result
+        logger.info(f"Updated cache with {len(fresh_rows)} fresh rows")
+        return fresh_rows.copy()
+
+def _generate_mock_news_data() -> List[Dict]:
+    """
+    Generate realistic mock financial news data.
+    In production, this would be replaced with real RSS/API feeds.
+    """
+    base_time = datetime.now()
+    
+    # Expanded mock news data with more variety
+    mock_news = [
+        {
+            "id": "AAPL_001",
+            "ticker": "AAPL",
+            "headline": "Apple reports record quarterly earnings, beating analyst expectations by 15%",
+            "timestamp": (base_time - timedelta(hours=2)).isoformat(),
+            "source": "Reuters",
+            "category": "earnings",
+            "sentiment": "positive"
+        },
+        {
+            "id": "TSLA_001",
+            "ticker": "TSLA", 
+            "headline": "Tesla delivers 500,000 vehicles in Q4, stock surges 8% in after-hours trading",
+            "timestamp": (base_time - timedelta(hours=1)).isoformat(),
+            "source": "Bloomberg",
+            "category": "delivery",
+            "sentiment": "positive"
+        },
+        {
+            "id": "GOOGL_001",
+            "ticker": "GOOGL",
+            "headline": "Google announces breakthrough in quantum computing, Alphabet shares jump 12%",
+            "timestamp": (base_time - timedelta(minutes=45)).isoformat(),
+            "source": "TechCrunch",
+            "category": "innovation",
+            "sentiment": "positive"
+        },
+        {
+            "id": "MSFT_001",
+            "ticker": "MSFT",
+            "headline": "Microsoft Azure revenue grows 35% YoY, cloud dominance continues",
+            "timestamp": (base_time - timedelta(hours=3)).isoformat(),
+            "source": "CNBC",
+            "category": "earnings",
+            "sentiment": "positive"
+        },
+        {
+            "id": "NVDA_001",
+            "ticker": "NVDA",
+            "headline": "NVIDIA partners with major automakers for next-gen AI chips",
+            "timestamp": (base_time - timedelta(minutes=20)).isoformat(),
+            "source": "MarketWatch",
+            "category": "partnership",
+            "sentiment": "positive"
+        },
+        {
+            "id": "META_001",
+            "ticker": "META",
+            "headline": "Meta's VR division shows promising growth, metaverse investments paying off",
+            "timestamp": (base_time - timedelta(hours=4)).isoformat(),
+            "source": "The Verge",
+            "category": "earnings",
+            "sentiment": "positive"
+        },
+        {
+            "id": "AMZN_001",
+            "ticker": "AMZN",
+            "headline": "Amazon Web Services signs major cloud deal with government agency",
+            "timestamp": (base_time - timedelta(minutes=10)).isoformat(),
+            "source": "Reuters",
+            "category": "contract",
+            "sentiment": "positive"
+        },
+        {
+            "id": "NFLX_001",
+            "ticker": "NFLX",
+            "headline": "Netflix subscriber growth accelerates with new content strategy",
+            "timestamp": (base_time - timedelta(hours=5)).isoformat(),
+            "source": "Variety",
+            "category": "growth",
+            "sentiment": "positive"
+        },
+        {
+            "id": "SPY_001",
+            "ticker": "SPY",
+            "headline": "S&P 500 reaches new all-time high amid strong earnings season",
+            "timestamp": (base_time - timedelta(minutes=30)).isoformat(),
+            "source": "MarketWatch",
+            "category": "market",
+            "sentiment": "positive"
+        },
+        {
+            "id": "BTC_001",
+            "ticker": "BTC",
+            "headline": "Bitcoin approaches $50,000 as institutional adoption increases",
+            "timestamp": (base_time - timedelta(hours=6)).isoformat(),
+            "source": "CoinDesk",
+            "category": "crypto",
+            "sentiment": "positive"
+        }
+    ]
+    
+    return mock_news
+
+def _add_embeddings_to_rows(rows: List[Dict]) -> List[Dict]:
+    """
+    Add embeddings to news rows using the retrieval engine.
+    """
+    try:
+        from retrieval_engine import embed_text
+    except ImportError:
+        logger.warning("retrieval_engine not available, using fallback embeddings")
+        return _add_fallback_embeddings(rows)
+    
+    enhanced_rows = []
+    for row in rows:
+        try:
+            # Create embedding text from headline and ticker
+            embed_text_content = f"{row['ticker']} {row['headline']}"
+            
+            # Generate embedding
+            embedding = embed_text(embed_text_content)
+            
+            # Add embedding to row
+            enhanced_row = row.copy()
+            enhanced_row['embedding'] = embedding
+            enhanced_row['embed_text'] = embed_text_content
+            
+            enhanced_rows.append(enhanced_row)
+            
+        except Exception as e:
+            logger.warning(f"Failed to generate embedding for {row.get('id', 'unknown')}: {e}")
+            # Add row without embedding
+            enhanced_rows.append(row)
+    
+    logger.info(f"Added embeddings to {len([r for r in enhanced_rows if 'embedding' in r])}/{len(rows)} rows")
+    return enhanced_rows
+
+def _add_fallback_embeddings(rows: List[Dict]) -> List[Dict]:
+    """
+    Fallback embedding generation when retrieval_engine is not available.
+    """
+    import numpy as np
+    
+    enhanced_rows = []
+    for row in rows:
+        embed_text_content = f"{row['ticker']} {row['headline']}"
         
-    except Exception as e:
-        logger.error(f"Error in get_latest_rows: {e}")
-        pipeline_stats.errors.append(f"Data access error: {str(e)}")
-        return []
+        # Generate deterministic fallback embedding
+        np.random.seed(hash(embed_text_content) % 2**32)
+        embedding = np.random.rand(1536).astype(float).tolist()
+        
+        enhanced_row = row.copy()
+        enhanced_row['embedding'] = embedding
+        enhanced_row['embed_text'] = embed_text_content
+        
+        enhanced_rows.append(enhanced_row)
+    
+    return enhanced_rows
 
-# ─── Pipeline health monitoring ────────────────────────────────────────────────
-def get_pipeline_health() -> Dict[str, Any]:
-    """Get comprehensive pipeline health information."""
-    global pipeline_stats
+def get_news_by_ticker(ticker: str) -> List[Dict]:
+    """
+    Get news filtered by specific ticker symbol.
+    """
+    all_rows = get_latest_rows()
+    filtered_rows = [row for row in all_rows if row.get('ticker') == ticker.upper()]
     
-    health_data = asdict(pipeline_stats)
-    
-    # Add computed metrics
-    if pipeline_stats.pipeline_start_time:
-        uptime = datetime.now() - pipeline_stats.pipeline_start_time
-        health_data["uptime_seconds"] = uptime.total_seconds()
-        health_data["uptime_readable"] = str(uptime)
-    
-    # Embedding success rate
-    total_attempts = pipeline_stats.successful_embeddings + pipeline_stats.failed_embeddings
-    if total_attempts > 0:
-        health_data["embedding_success_rate"] = pipeline_stats.successful_embeddings / total_attempts
-    else:
-        health_data["embedding_success_rate"] = 0.0
-    
-    # Recent activity check
-    if pipeline_stats.last_processed:
-        time_since_last = datetime.now() - pipeline_stats.last_processed
-        health_data["minutes_since_last_processed"] = time_since_last.total_seconds() / 60
-        health_data["is_active"] = time_since_last.total_seconds() < 300  # 5 minutes threshold
-    else:
-        health_data["is_active"] = False
-        health_data["minutes_since_last_processed"] = None
-    
-    # Data availability
-    try:
-        current_rows = len(get_latest_rows(limit=1000))
-        health_data["total_available_rows"] = current_rows
-    except:
-        health_data["total_available_rows"] = 0
-    
-    return health_data
+    logger.info(f"Found {len(filtered_rows)} articles for ticker {ticker}")
+    return filtered_rows
 
-def start_health_monitor():
-    """Start health monitoring in background thread."""
-    def monitor():
-        while True:
-            try:
-                health = get_pipeline_health()
-                if not health["is_active"] and health["total_processed"] > 0:
-                    logger.warning("Pipeline appears inactive!")
-                time.sleep(HEALTH_CHECK_INTERVAL)
-            except Exception as e:
-                logger.error(f"Health monitor error: {e}")
-                time.sleep(HEALTH_CHECK_INTERVAL)
+def get_news_by_category(category: str) -> List[Dict]:
+    """
+    Get news filtered by category (earnings, partnership, innovation, etc.).
+    """
+    all_rows = get_latest_rows()
+    filtered_rows = [row for row in all_rows if row.get('category') == category.lower()]
     
-    t = threading.Thread(target=monitor, daemon=True)
-    t.start()
-    return t
+    logger.info(f"Found {len(filtered_rows)} articles for category {category}")
+    return filtered_rows
 
-# ─── Enhanced pipeline startup ─────────────────────────────────────────────────
-def _run_pipeline_blocking():
-    """Run Pathway pipeline with enhanced error handling."""
-    try:
-        logger.info("Starting Pathway pipeline...")
-        pw.run()
-    except Exception as e:
-        logger.error(f"Pipeline crashed: {e}")
-        pipeline_stats.errors.append(f"Pipeline crash: {str(e)}")
+def get_recent_news(hours: int = 24) -> List[Dict]:
+    """
+    Get news from the last N hours.
+    """
+    all_rows = get_latest_rows()
+    cutoff_time = datetime.now() - timedelta(hours=hours)
+    
+    recent_rows = []
+    for row in all_rows:
+        try:
+            timestamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00'))
+            if timestamp.replace(tzinfo=None) > cutoff_time:
+                recent_rows.append(row)
+        except Exception as e:
+            logger.warning(f"Invalid timestamp in row {row.get('id', 'unknown')}: {e}")
+    
+    logger.info(f"Found {len(recent_rows)} articles from last {hours} hours")
+    return recent_rows
 
-def start_ingest():
-    """Start enhanced pipeline with monitoring."""
-    if news_table is None:
-        logger.error("Cannot start pipeline - initialization failed")
-        return None
+def refresh_cache():
+    """
+    Force refresh of the news cache.
+    """
+    global _last_update
+    with _data_lock:
+        _last_update = None  # Force refresh on next call
     
-    # Start pipeline
-    pipeline_thread = threading.Thread(target=_run_pipeline_blocking, daemon=True)
-    pipeline_thread.start()
+    logger.info("Cache refresh forced")
+    return get_latest_rows()
+
+def get_pipeline_stats() -> Dict:
+    """
+    Get statistics about the current pipeline state.
+    """
+    rows = get_latest_rows()
     
-    # Start health monitor
-    health_thread = start_health_monitor()
+    # Count by ticker
+    ticker_counts = {}
+    category_counts = {}
+    sentiment_counts = {}
     
-    logger.info("Pipeline and health monitor started")
-    return pipeline_thread, health_thread
+    for row in rows:
+        ticker = row.get('ticker', 'Unknown')
+        category = row.get('category', 'unknown')
+        sentiment = row.get('sentiment', 'neutral')
+        
+        ticker_counts[ticker] = ticker_counts.get(ticker, 0) + 1
+        category_counts[category] = category_counts.get(category, 0) + 1
+        sentiment_counts[sentiment] = sentiment_counts.get(sentiment, 0) + 1
+    
+    # Calculate timing stats
+    now = datetime.now()
+    times_ago = []
+    
+    for row in rows:
+        try:
+            timestamp = datetime.fromisoformat(row['timestamp'].replace('Z', '+00:00'))
+            hours_ago = (now - timestamp.replace(tzinfo=None)).total_seconds() / 3600
+            times_ago.append(hours_ago)
+        except:
+            continue
+    
+    stats = {
+        'total_articles': len(rows),
+        'articles_with_embeddings': len([r for r in rows if 'embedding' in r]),
+        'unique_tickers': len(ticker_counts),
+        'ticker_distribution': ticker_counts,
+        'category_distribution': category_counts,
+        'sentiment_distribution': sentiment_counts,
+        'avg_hours_ago': sum(times_ago) / len(times_ago) if times_ago else 0,
+        'cache_age_seconds': time.time() - _last_update if _last_update else 0
+    }
+    
+    return stats
+
+# For backward compatibility
+def get_mock_news_data():
+    """Legacy function name - redirects to get_latest_rows()"""
+    logger.warning("get_mock_news_data() is deprecated, use get_latest_rows() instead")
+    return get_latest_rows()
+
+# Production-ready functions (stubs for future implementation)
+def setup_rss_feeds(feeds: List[str]):
+    """
+    Setup RSS feeds for real-time news ingestion.
+    TODO: Implement in production version.
+    """
+    logger.info(f"RSS feeds setup requested: {feeds}")
+    raise NotImplementedError("RSS feeds not implemented in demo version")
+
+def setup_news_apis(api_keys: Dict[str, str]):
+    """
+    Setup news API connections (NewsAPI, Alpha Vantage, etc.).
+    TODO: Implement in production version.
+    """
+    logger.info(f"News APIs setup requested: {list(api_keys.keys())}")
+    raise NotImplementedError("News APIs not implemented in demo version")
+
+if __name__ == "__main__":
+    # Test the enhanced pipeline
+    print("🧪 Testing Enhanced Ingest Pipeline")
+    print("=" * 40)
+    
+    # Test basic functionality
+    print("\n📰 Fetching latest rows...")
+    rows = get_latest_rows()
+    print(f"✅ Got {len(rows)} articles")
+    
+    # Test embeddings
+    print(f"✅ {len([r for r in rows if 'embedding' in r])} articles have embeddings")
+    
+    # Test filtering
+    print("\n🔍 Testing filters...")
+    aapl_news = get_news_by_ticker("AAPL")
+    print(f"✅ AAPL news: {len(aapl_news)} articles")
+    
+    earnings_news = get_news_by_category("earnings")
+    print(f"✅ Earnings news: {len(earnings_news)} articles")
+    
+    recent_news = get_recent_news(hours=2)
+    print(f"✅ Recent news (2h): {len(recent_news)} articles")
+    
+    # Test stats
+    print("\n📊 Pipeline statistics...")
+    stats = get_pipeline_stats()
+    print(f"✅ Total articles: {stats['total_articles']}")
+    print(f"✅ Unique tickers: {stats['unique_tickers']}")
+    print(f"✅ Average age: {stats['avg_hours_ago']:.1f} hours")
+    
+    print("\n🎉 Enhanced pipeline test completed!")
