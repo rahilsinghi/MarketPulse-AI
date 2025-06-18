@@ -13,6 +13,7 @@ import os
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from streamlit_autorefresh import st_autorefresh
+import time
 
 # Load environment
 load_dotenv()
@@ -574,42 +575,6 @@ def retrieve_relevant_docs(question: str, data: list, top_k: int = 3):
     scored_docs.sort(key=lambda x: x['similarity'], reverse=True)
     return scored_docs[:top_k]
 
-def answer_question(question: str, relevant_docs: list) -> str:
-    if not relevant_docs:
-        return "I couldn't find any relevant news for your question."
-    
-    context_parts = []
-    for doc in relevant_docs:
-        timestamp = datetime.fromisoformat(doc['timestamp'])
-        time_ago = datetime.now() - timestamp
-        
-        if time_ago.total_seconds() < 3600:
-            time_str = f"{int(time_ago.total_seconds() / 60)} minutes ago"
-        else:
-            time_str = f"{int(time_ago.total_seconds() / 3600)} hours ago"
-        
-        context_parts.append(
-            f"**[{doc['ticker']}]** {doc['headline']} "
-            f"*({time_str}, {doc['source']}, relevance: {doc['similarity']:.2f})*"
-        )
-    
-    context = "\n\n".join(context_parts)
-    tickers = [doc['ticker'] for doc in relevant_docs]
-    main_ticker = max(set(tickers), key=tickers.count)
-    
-    response = f"Based on recent market news about **{main_ticker}** and related stocks:\n\n{context}\n\n"
-    
-    if "earnings" in question.lower():
-        response += "Analysis: This appears to be related to earnings reports and financial performance."
-    elif "stock" in question.lower() or "price" in question.lower():
-        response += "Analysis: This involves stock price movements and market reactions."
-    elif any(word in question.lower() for word in ["news", "what", "happening"]):
-        response += "Analysis: Here's the latest news that might be relevant to your query."
-    else:
-        response += "Analysis: This information should help answer your question about recent market activity."
-    
-    return response
-
 def get_pathway_table():
     df = pd.DataFrame([{
         "Ticker": item['ticker'],
@@ -617,6 +582,9 @@ def get_pathway_table():
         "Timestamp": datetime.fromisoformat(item['timestamp']).strftime("%Y-%m-%d %H:%M:%S")
     } for item in st.session_state.news_data])
     return df
+
+# Assume query_agent is imported or defined somewhere in your codebase
+# from query_agent_module import query_agent
 
 def main():
     with st.sidebar:
@@ -650,20 +618,6 @@ def main():
             st.success("OpenAI API key configured")
         else:
             st.warning("OpenAI API key not found")
-
-        # Inject test headline button
-        if st.button("Inject Test Headline"):
-            new_item = {
-                "id": "ACME_001",
-                "ticker": "ACME",
-                "headline": "ACME acquires XYZ…",
-                "timestamp": datetime.now().isoformat(),
-                "source": "Injected",
-                "embedding": mock_embed_text("ACME acquires XYZ…")
-            }
-            st.session_state.news_data.append(new_item)
-            st.success("Test headline injected!")
-            st.experimental_rerun()
 
         # === Live feed auto-refresh every 5 seconds ===
         count = st_autorefresh(interval=5 * 1000, limit=None, key="livefeed_autorefresh")
@@ -700,12 +654,30 @@ def main():
                 st.markdown(prompt)
 
             with st.chat_message("assistant"):
+                message_placeholder = st.empty()  # Placeholder for typing indicator / final answer
+
+                # Typing indicator animation (dots)
+                for i in range(3):
+                    message_placeholder.markdown(f"Analyzing market news{'.' * (i+1)}")
+                    time.sleep(0.5)
+
+                # Now do the actual processing
                 with st.spinner("Analyzing market news..."):
                     relevant_docs = retrieve_relevant_docs(prompt, st.session_state.news_data, top_k=3)
-                    response = answer_question(prompt, relevant_docs)
-                    st.markdown(response)
+                    result = query_agent.answer_query_sync(prompt, relevant_docs)
 
-            st.session_state.messages.append({"role": "assistant", "content": response})
+                if isinstance(result, tuple) and len(result) == 2:
+                    answer, latency = result
+                else:
+                    answer = result
+                    latency = None
+
+                # Show the final answer (replacing typing indicator)
+                message_placeholder.markdown(answer)
+                if latency is not None:
+                    st.markdown(f'<span style="font-size:12px;color:gray;">Latency: {latency:.2f} seconds</span>', unsafe_allow_html=True)
+
+            st.session_state.messages.append({"role": "assistant", "content": answer})
 
     with tab2:
         st.subheader("Latest Market News")

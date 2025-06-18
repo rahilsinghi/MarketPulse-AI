@@ -1,0 +1,7 @@
+2025-06-18 12:41:06,067 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-06-18 12:41:06,363 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-06-18 12:41:06,681 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-06-18 12:41:07,193 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-06-18 12:41:07,196 - query_agent - ERROR - Error in document retrieval: slice indices must be integers or None or have an __index__ method
+2025-06-18 12:41:18,176 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-06-18 12:41:18,184 - query_agent - ERROR - Error in document retrieval: slice indices must be integers or None or have an __index__ method
